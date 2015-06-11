@@ -13,4 +13,7 @@ public class Const {
     static final String IEXTRA_AUTH_URL = "auth_url";
     static final String IEXTRA_OAUTH_VERIFIER = "oauth_verifier";
     static final String IEXTRA_OAUTH_TOKEN = "oauth_token";
+
+    static final String SCREENNAME = "twitter_client_screenname";
+    static final String USER_ID = "twitter_client_userid";
 }

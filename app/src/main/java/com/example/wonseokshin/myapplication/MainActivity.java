@@ -1,13 +1,11 @@
 package com.example.wonseokshin.myapplication;
 
 import android.app.Activity;
-import android.app.ProgressDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.graphics.Point;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.StrictMode;
@@ -19,14 +17,15 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.Window;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.CookieManager;
 import android.webkit.CookieSyncManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -57,7 +56,7 @@ public class MainActivity extends ActionBarActivity {
     private TextView mtvLoginPasswordLabel;
     private EditText metLoginPassword;
     private Button mbSignIn;
-    private TextView mtvTempNewsFeedTest;
+    private TextView mtvNewsFeed;
 
     private Twitter mTwitter;
     private RequestToken requestToken;
@@ -68,6 +67,12 @@ public class MainActivity extends ActionBarActivity {
     private int mScreenHeight = -1;
     private String mStringToken;
     private String mStringTokenSecret;
+    private Button mbSignOut;
+    private ScrollView msvNewsFeed;
+    private LinearLayout mllNewsFeed;
+    private LinearLayout mllPostTweet;
+    private EditText metPostTweet;
+    private Button mbPostTweet;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,7 +85,7 @@ public class MainActivity extends ActionBarActivity {
         setScreenDimMemberVars();
 
         //set sharedprefs member variable
-        setSharedPrefsToMember(Const.PREFERENCE_NAME);
+        setSharedPrefsToMemberVar(Const.PREFERENCE_NAME);
 
         /**
          * set thread policy to StrictMode, needed because of twitter4j api
@@ -94,6 +99,10 @@ public class MainActivity extends ActionBarActivity {
         createAndShowSplashAndLogin(2500);
 
         setContentView(mllBackground);
+
+
+        InputMethodManager imm = (InputMethodManager)getSystemService(MainActivity.this.INPUT_METHOD_SERVICE);
+        imm.hideSoftInputFromWindow(mllBackground.getWindowToken(), 0);
     }
 
     @Override
@@ -122,7 +131,7 @@ public class MainActivity extends ActionBarActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
-        if (resultCode == Activity.RESULT_OK) {
+        if (resultCode == Activity.RESULT_OK && requestCode == MainActivity.WEBVIEW_INTENT_REQUEST_CODE) {
             String verifier = data.getExtras().getString(Const.IEXTRA_OAUTH_VERIFIER);
             try {
                 /**
@@ -140,22 +149,26 @@ public class MainActivity extends ActionBarActivity {
                 mStringTokenSecret = accessToken.getTokenSecret();
                 mStringToken = accessToken.getToken();
 
-                //save user login to be persistent (use sharedprefs), optional
-
                 //Temporary toast to test for login information
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        Toast.makeText(MainActivity.this, "Returned From Webview Activity\nuserID: " + userID +
-                                        "\nusername :" + username +
-                                        "\naccess token: " + mStringToken +
-                                        "\naccess token secret: " + mStringTokenSecret
-                                ,
-                                Toast.LENGTH_LONG).show();
-                    }
-                });
+                Toast.makeText(MainActivity.this, "Returned From Webview Activity\nuserID: " + userID +
+                                "\nusername :" + username +
+                                "\naccess token: " + mStringToken +
+                                "\naccess token secret: " + mStringTokenSecret
+                        ,
+                        Toast.LENGTH_LONG).show();
 
+                saveAccessTokenToSharedPrefs(accessToken);
                 getUserNewsFeed();
+
+                //update the main screen ui
+                mbSignIn.setVisibility(View.GONE);
+                mbSignOut.setVisibility(View.VISIBLE);
+                mbSignOut.setText("Sign out of " + accessToken.getScreenName());
+                mbSignIn.postInvalidate();
+                mbSignOut.postInvalidate();
+                msvNewsFeed.setVisibility(View.VISIBLE);
+                mivLoginLogo.setVisibility(View.GONE);
+                mllPostTweet.setVisibility(View.VISIBLE);
 
             } catch (Exception e) {
                 Log.e("Twitter Login Failed", e.getMessage());
@@ -163,31 +176,55 @@ public class MainActivity extends ActionBarActivity {
         }
     }
 
+    public void saveAccessTokenToSharedPrefs(AccessToken accessToken) {
+        SharedPreferences.Editor e = mSharedPreferences.edit();
+        e.putString(Const.PREF_KEY_TOKEN, accessToken.getToken());
+        e.putString(Const.PREF_KEY_SECRET, accessToken.getTokenSecret());
+        e.putString(Const.SCREENNAME, accessToken.getScreenName());
+        e.putString(Const.USER_ID, accessToken.getUserId() + "");
+        e.commit();
+    }
+
     //twitter4j examples page: http://twitter4j.org/en/code-examples.html
     //modified: https://github.com/yusuke/twitter4j/blob/master/twitter4j-examples/src/main/java/twitter4j/examples/timeline/GetHomeTimeline.java
-    public void getUserNewsFeed(){
+    public void getUserNewsFeed() {
         try {
-            // gets Twitter instance with default credentials
-            //Twitter twitter = new TwitterFactory().getInstance();
-            final User user = mTwitter.verifyCredentials();
-            List<Status> statuses = mTwitter.getHomeTimeline();
-            //System.out.println("Showing @" + user.getScreenName() + "'s home timeline.");
-            //Toast.makeText(MainActivity.this, "Showing @" + user.getScreenName() + "'s home timeline.", Toast.LENGTH_LONG).show();
+            if (mTwitter == null) {
+                ConfigurationBuilder cb = new ConfigurationBuilder();
+                cb.setDebugEnabled(true)
+                        .setOAuthConsumerKey(Const.CONSUMER_KEY)
+                        .setOAuthConsumerSecret(Const.CONSUMER_SECRET)
+                        .setOAuthAccessToken(mSharedPreferences.getString(Const.PREF_KEY_TOKEN, null))
+                        .setOAuthAccessTokenSecret(mSharedPreferences.getString(Const.PREF_KEY_SECRET, null));
+
+                TwitterFactory tf = new TwitterFactory(cb.build());
+                mTwitter = tf.getInstance();
+            }
+
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    mtvTempNewsFeedTest.append("Showing @" + user.getScreenName() + "'s home timeline.");
-                    mtvTempNewsFeedTest.postInvalidate();
+                    mtvNewsFeed.setText("Twitter Feed\n");
                 }
             });
-            for (Status status : statuses) {
+
+            final User user = mTwitter.verifyCredentials();
+            List<Status> statuses = mTwitter.getHomeTimeline();
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    mtvNewsFeed.append("Showing @" + user.getScreenName() + "'s home timeline.\n");
+                    mtvNewsFeed.postInvalidate();
+                }
+            });
+
+            for (final Status status : statuses) {
                 final Status statusForUI = status;
-                //System.out.println("@" + status.getUser().getScreenName() + " - " + status.getText());
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        mtvTempNewsFeedTest.append("@" + statusForUI.getUser().getScreenName() + " - " + statusForUI.getText());
-                        mtvTempNewsFeedTest.postInvalidate();
+                        mtvNewsFeed.append("\n\n@" + statusForUI.getUser().getScreenName() + "\n- " + statusForUI.getText());
+                        mtvNewsFeed.postInvalidate();
                     }
                 });
             }
@@ -198,26 +235,30 @@ public class MainActivity extends ActionBarActivity {
         }
     }
 
-    private void setScreenDimMemberVars(){
+    private void setScreenDimMemberVars() {
         int currentapiVersion = android.os.Build.VERSION.SDK_INT;
-        if (currentapiVersion >= Build.VERSION_CODES.HONEYCOMB_MR2){
+        if (currentapiVersion >= Build.VERSION_CODES.HONEYCOMB_MR2) {
             Display display = getWindowManager().getDefaultDisplay();
             Point size = new Point();
             display.getSize(size);
             mScreenWidth = size.x;
             mScreenHeight = size.y;
-        } else{
+        } else {
             Display display = getWindowManager().getDefaultDisplay();
             mScreenWidth = display.getWidth();  // deprecated
             mScreenHeight = display.getHeight();  // deprecated
         }
     }
 
-    /**Creates and shows splash screen and login, handles splash screen removal
-     * @params int splashscreenShowDuration, time in milliseconds to show splashscreen
+    /**
+     * Creates and shows splash screen and login, handles splash screen removal
+     *
      * @return Linearlayout a mllBackground is assigned a linearlayout, caller must set as contentview
+     * @params int splashscreenShowDuration, time in milliseconds to show splashscreen
      */
-    private LinearLayout createAndShowSplashAndLogin(int splashscreenShowDuration){
+    private LinearLayout createAndShowSplashAndLogin(int splashscreenShowDuration) {
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
+
         //The content frame
         mllBackground = new LinearLayout(this);
         mllBackground.setBackgroundColor(Color.argb(255, 85, 172, 238));
@@ -234,55 +275,94 @@ public class MainActivity extends ActionBarActivity {
 
         //The Login Screen
         mllLoginScreen = new LinearLayout(this);
-            mllLoginScreen.setGravity(Gravity.CENTER_HORIZONTAL);
-            mllLoginScreen.setOrientation(LinearLayout.VERTICAL);
-        //mllLoginScreen.setBackgroundResource(R.drawable.splashscreen);//looks terrible
+        mllLoginScreen.setGravity(Gravity.CENTER_HORIZONTAL);
+        mllLoginScreen.setOrientation(LinearLayout.VERTICAL);
         mivLoginLogo = new ImageView(this);
-            mivLoginLogo.setBackgroundResource(R.drawable.loginlogo);
-        mtvLoginIDLabel = new TextView(this);
-            mtvLoginIDLabel.setGravity(Gravity.CENTER);
-            mtvLoginIDLabel.setText("Username");
-            mtvLoginIDLabel.setTextSize(22);
-            mtvLoginIDLabel.setPadding(0, 10, 0, 10);
-            mtvLoginIDLabel.setTextColor(Color.WHITE);
-        mtvLoginPasswordLabel = new TextView(this);
-            mtvLoginPasswordLabel.setGravity(Gravity.CENTER);
-            mtvLoginPasswordLabel.setText("Password");
-            mtvLoginPasswordLabel.setTextSize(22);
-            mtvLoginPasswordLabel.setPadding(0, 10, 0, 10);
-            mtvLoginPasswordLabel.setTextColor(Color.WHITE);
-        metLoginID = new EditText(this);
-            metLoginID.setBackgroundResource(R.drawable.style_rounded_edittext);
-        metLoginPassword = new EditText(this);
-            metLoginPassword.setBackgroundResource(R.drawable.style_rounded_edittext);
+        mivLoginLogo.setBackgroundResource(R.drawable.loginlogo);
+
+        String userScreenName = mSharedPreferences.getString(Const.SCREENNAME, null);
+        //String userID = mSharedPreferences.getString(Const.USER_ID, null);
+
         mbSignIn = new Button(this);
-            mbSignIn.setText("Log in to Twitter");
-            mbSignIn.setBackgroundResource(R.drawable.style_rounded_button);
+        mbSignIn.setText("Sign in to Twitter");
+        mbSignIn.setBackgroundResource(R.drawable.style_rounded_button);
         mbSignIn.setGravity(Gravity.CENTER);
-            mbSignIn.setTextColor(Color.WHITE);
-            mbSignIn.setPadding(0, 0, 0, 0);
-            setSignInButtonOnClickListener(mbSignIn);
+        mbSignIn.setTextColor(Color.WHITE);
+        mbSignIn.setPadding(0, 0, 0, 0);
+        setSignInButtonOnClickListener(mbSignIn);
+        mbSignOut = new Button(this);
+        mbSignOut.setText("Sign out of " + userScreenName);
+        mbSignOut.setBackgroundResource(R.drawable.style_rounded_button);
+        mbSignOut.setGravity(Gravity.CENTER);
+        mbSignOut.setTextColor(Color.WHITE);
+        mbSignOut.setPadding(0, 0, 0, 0);
+        setSignOutButtonOnClickListener(mbSignOut);
+        mtvNewsFeed = new TextView(MainActivity.this);
+        mtvNewsFeed.setTextColor(getResources().getColor(R.color.twitter_blue));
+        mtvNewsFeed.setText("Twitter Feed\n");
+        mtvNewsFeed.setBackgroundColor(Color.DKGRAY);
+        mtvNewsFeed.setPadding(5, 5, 5, 5);
+        mllNewsFeed = new LinearLayout(MainActivity.this);
+        mllNewsFeed.addView(mtvNewsFeed);
+        msvNewsFeed = new ScrollView(MainActivity.this);
+        msvNewsFeed.addView(mllNewsFeed);
 
+        mllPostTweet = new LinearLayout(MainActivity.this);
+        mllPostTweet.setOrientation(LinearLayout.HORIZONTAL);
+        mllPostTweet.setGravity(Gravity.CENTER);
+        metPostTweet = new EditText(MainActivity.this);
+        metPostTweet.setHint("Tweet Message");
+        metPostTweet.setBackgroundResource(R.drawable.style_rounded_edittext);
+        metPostTweet.setGravity(Gravity.CENTER);
+        mbPostTweet = new Button(MainActivity.this);
+        mbPostTweet.setText("Post");
+        mbPostTweet.setTextColor(Color.WHITE);
+        mbPostTweet.setBackgroundResource(R.drawable.style_rounded_button);
+        setOnClickListenerPostButton(mbPostTweet);
+        mllPostTweet.addView(metPostTweet, (int) (mScreenWidth * .6), ViewGroup.LayoutParams.WRAP_CONTENT);
         View vSpacing = new View(this);
-            vSpacing.setBackgroundColor(Color.argb(0, 0, 0, 0));
-        mllLoginScreen.addView(vSpacing, (int) (mScreenWidth * .6), (int) ((int) (mScreenWidth * .05)));
-        mllLoginScreen.addView(mivLoginLogo, (int) (mScreenWidth * .6), (int) (mScreenWidth * .6));
+        vSpacing.setBackgroundColor(Color.argb(0, 0, 0, 0));
+        mllPostTweet.addView(vSpacing, (int) (mScreenWidth * .02), (int) (mScreenWidth * .02));
+        mllPostTweet.addView(mbPostTweet, (int) (mScreenWidth * .2), ViewGroup.LayoutParams.WRAP_CONTENT);
+
+
         vSpacing = new View(this);
-            vSpacing.setBackgroundColor(Color.argb(0, 0, 0, 0));
-        mllLoginScreen.addView(vSpacing, (int) (mScreenWidth * .6), (int) ((int) (mScreenWidth * .05)));
-        mllLoginScreen.addView(mbSignIn, (int) (mScreenWidth * .6), (int) ((int) (mScreenWidth * .1)));
-
-
-        mtvTempNewsFeedTest = new TextView(MainActivity.this);
-        mtvTempNewsFeedTest.setTextColor(Color.RED);
-        mtvTempNewsFeedTest.setText("Default");
-        mtvTempNewsFeedTest.setBackgroundColor(Color.DKGRAY);
-        mllLoginScreen.addView(mtvTempNewsFeedTest, (int) (mScreenWidth*.5), (int) ((int) (mScreenWidth*.5)));
+        vSpacing.setBackgroundColor(Color.argb(0, 0, 0, 0));
+        mllLoginScreen.addView(vSpacing, (int) (mScreenWidth * .6), (int) (mScreenWidth * .02));
+        mllLoginScreen.addView(mbSignIn, (int) (mScreenWidth * .6), (int) (mScreenWidth * .1));
+        mllLoginScreen.addView(mbSignOut, (int) (mScreenWidth * .6), (int) (mScreenWidth * .1));
+        vSpacing = new View(this);
+        vSpacing.setBackgroundColor(Color.argb(0, 0, 0, 0));
+        mllLoginScreen.addView(vSpacing, (int) (mScreenWidth * .6), (int) (mScreenWidth * .02));
+        mllLoginScreen.addView(mllPostTweet, (int) (mScreenWidth), ViewGroup.LayoutParams.WRAP_CONTENT);
+        vSpacing = new View(this);
+        vSpacing.setBackgroundColor(Color.argb(0, 0, 0, 0));
+        mllLoginScreen.addView(vSpacing, (int) (mScreenWidth * .6), (int) (mScreenWidth * .02));
+        mllLoginScreen.addView(mivLoginLogo, (int) (mScreenWidth * .6), (int) (mScreenWidth * .6));
+        mllLoginScreen.addView(msvNewsFeed, (int) (mScreenWidth * .9), (int) (mScreenWidth * .9));
 
         mllBackground.addView(mllLoginScreen, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
 
+        //display the appropriate sign in/sign out button based on if tokens and user info is set in sharedprefs
+        //retrieve the user newsfeed (if signed into app with auth token)
+        if (prefTokensIsSet()) {
+            mbSignIn.setVisibility(View.GONE);
+            mbSignOut.setVisibility(View.VISIBLE);
 
+            msvNewsFeed.setVisibility(View.VISIBLE);
+            mivLoginLogo.setVisibility(View.GONE);
 
+            mllPostTweet.setVisibility(View.VISIBLE);
+            getUserNewsFeed();
+        } else {
+            mbSignIn.setVisibility(View.VISIBLE);
+            mbSignOut.setVisibility(View.GONE);
+
+            msvNewsFeed.setVisibility(View.GONE);
+            mivLoginLogo.setVisibility(View.VISIBLE);
+
+            mllPostTweet.setVisibility(View.GONE);
+        }
 
         //remove splash screen after specified amount of time
         android.os.Handler handler = new android.os.Handler();
@@ -296,12 +376,22 @@ public class MainActivity extends ActionBarActivity {
         return mllBackground;
     }
 
+    private void setOnClickListenerPostButton(final Button postButton){
+        postButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                //TODO: post tweet
+            }
+        });
+    }
+
     /**
-     *  Attaches an onclicklistenter to login to a twitter account. Note that the listener
-     *  will first attempt to log out of the currently logged in user if one exists when triggered.
-     * @param mbSignIn    the sign in button to which an onclicklistener will be attached
+     * Attaches an onclicklistenter to login to a twitter account. Note that the listener
+     * will first attempt to log out of the currently logged in user if one exists when triggered.
+     *
+     * @param bSignIn the sign in button to which an onclicklistener will be attached
      */
-    private void setSignInButtonOnClickListener(Button mbSignIn) {
+    private void setSignInButtonOnClickListener(Button bSignIn) {
         mbSignIn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -309,6 +399,7 @@ public class MainActivity extends ActionBarActivity {
                     @Override
                     public void run() {
                         super.run();
+                        //called to ensure that app's webview cache and shared prefs are cleared
                         logOutOfTwitter();
                         signInToTwitter();
                         try {
@@ -319,6 +410,25 @@ public class MainActivity extends ActionBarActivity {
                     }
                 };
                 threadSignIn.start();
+            }
+        });
+    }
+
+    /**
+     * Attaches an onclicklistenter to login to a twitter account. Note that the listener
+     * will first attempt to log out of the currently logged in user if one exists when triggered.
+     *
+     * @param bSignOut the sign in button to which an onclicklistener will be attached
+     */
+    private void setSignOutButtonOnClickListener(Button bSignOut) {
+        bSignOut.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                logOutOfTwitter();
+                Intent intentRestartApp = getBaseContext().getPackageManager()
+                        .getLaunchIntentForPackage(getBaseContext().getPackageName());
+                intentRestartApp.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                startActivity(intentRestartApp);
             }
         });
     }
@@ -342,27 +452,35 @@ public class MainActivity extends ActionBarActivity {
         }
     }
 
+    private boolean prefTokensIsSet() {
+        return mSharedPreferences.getString(Const.PREF_KEY_TOKEN, null) != null
+                && mSharedPreferences.getString(Const.PREF_KEY_SECRET, null) != null
+                && mSharedPreferences.getString(Const.SCREENNAME, null) != null
+                && mSharedPreferences.getString(Const.USER_ID, null) != null;
+    }
+
     /**
      * Removes the required sharedPrefs to sign out of app,
      * deletes cookies in the cookiemanager,
      * and sets the Twitter class's oauthaccesstoken to null
      */
-    private void logOutOfTwitter(){
+    private void logOutOfTwitter() {
         SharedPreferences.Editor editor = mSharedPreferences.edit();
         editor.remove(Const.PREF_KEY_TOKEN);
         editor.remove(Const.PREF_KEY_SECRET);
+        editor.remove(Const.SCREENNAME);
+        editor.remove(Const.USER_ID);
         editor.commit();
 
         CookieSyncManager.createInstance(this);
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.removeSessionCookie();
 
-        if(mTwitter != null)
+        if (mTwitter != null)
             mTwitter.setOAuthAccessToken(null);
-        //mTwitter.shutdown();
     }
 
-    private void setThreadModeToStrict(){
+    private void setThreadModeToStrict() {
         if (android.os.Build.VERSION.SDK_INT > 8) {
             StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder()
                     .permitAll().build();
@@ -370,29 +488,27 @@ public class MainActivity extends ActionBarActivity {
         }
     }
 
-    private void initAppDisplayConfig(){
+    private void initAppDisplayConfig() {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         hideActionBar();
         hideStatusBar();
     }
 
-    private void hideActionBar(){
-        try{
+    private void hideActionBar() {
+        try {
             getSupportActionBar().hide();
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             e.printStackTrace();
         }
 
-        try{
+        try {
             getActionBar().hide();
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private void hideStatusBar(){
+    private void hideStatusBar() {
         View decorView = getWindow().getDecorView();
 
         // Hide the status bar.
@@ -400,65 +516,13 @@ public class MainActivity extends ActionBarActivity {
         decorView.setSystemUiVisibility(uiOptions);
     }
 
-
-    public void clearAppSharedPreferences(String prefName){
+    public void clearAppSharedPreferences(String prefName) {
         mSharedPreferences = getSharedPreferences(prefName, MODE_PRIVATE);
         mSharedPreferences.edit().clear();
         mSharedPreferences.edit().commit();
     }
 
-    public void setSharedPrefsToMember(String prefsName){
+    public void setSharedPrefsToMemberVar(String prefsName) {
         mSharedPreferences = getSharedPreferences(prefsName, MODE_PRIVATE);
     }
-    /*
-    private void initTwitterComponents(){
-        mSharedPreferences = getSharedPreferences(Const.PREFERENCE_NAME, MODE_PRIVATE);
-
-        Uri uri = getIntent().getData();
-        if (uri != null && uri.toString().startsWith(Const.CALLBACK_URL)) {
-            String verifier = uri.getQueryParameter(Const.IEXTRA_OAUTH_VERIFIER);
-            try {
-                AccessToken accessToken = mTwitter.getOAuthAccessToken(requestToken, verifier);
-                SharedPreferences.Editor e = mSharedPreferences.edit();
-                e.putString(Const.PREF_KEY_TOKEN, accessToken.getToken());
-                e.putString(Const.PREF_KEY_SECRET, accessToken.getTokenSecret());
-                e.clear();
-            } catch (final Exception e) {
-                Log.e(TAG, e.getMessage());
-            }
-        }
-
-    }
-    */
-
-    /*
-    protected void onResume() {
-        super.onResume();
-
-        if (isConnected()) {
-            String oauthAccessToken = mSharedPreferences.getString(Const.PREF_KEY_TOKEN, "");
-            String oAuthAccessTokenSecret = mSharedPreferences.getString(Const.PREF_KEY_SECRET, "");
-
-            ConfigurationBuilder confbuilder = new ConfigurationBuilder();
-            Configuration conf = confbuilder
-                    .setOAuthConsumerKey(Const.CONSUMER_KEY)
-                    .setOAuthConsumerSecret(Const.CONSUMER_SECRET)
-                    .setOAuthAccessToken(oauthAccessToken)
-                    .setOAuthAccessTokenSecret(oAuthAccessTokenSecret)
-                    .build();
-            //twitterStream = new TwitterStreamFactory(conf).getInstance();
-
-            //buttonLogin.setText(R.string.label_disconnect);
-            //getTweetButton.setEnabled(true);
-        } else {
-            //buttonLogin.setText(R.string.label_connect);
-        }
-    }
-    */
-
-    /*
-    private boolean isConnected() {
-        return mSharedPreferences.getString(Const.PREF_KEY_TOKEN, null) != null;
-    }
-    */
 }
