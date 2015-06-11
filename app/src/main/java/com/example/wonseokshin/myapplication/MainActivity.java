@@ -36,8 +36,6 @@ import twitter4j.Status;
 import twitter4j.Twitter;
 import twitter4j.TwitterException;
 import twitter4j.TwitterFactory;
-import twitter4j.TwitterStream;
-import twitter4j.TwitterStreamFactory;
 import twitter4j.User;
 import twitter4j.auth.AccessToken;
 import twitter4j.auth.RequestToken;
@@ -157,7 +155,6 @@ public class MainActivity extends ActionBarActivity {
                     }
                 });
 
-                //TwitterStream tsUserNewsFeed = getUserNewsFeedStream();//delete getUserNewsFeedStream method
                 getUserNewsFeed();
 
             } catch (Exception e) {
@@ -199,17 +196,6 @@ public class MainActivity extends ActionBarActivity {
             //System.out.println("Failed to get timeline: " + te.getMessage());
             System.exit(-1);
         }
-    }
-    //modified: http://keyurj.blogspot.com/2014/02/reading-twitter-stream-using-twitter4j.html
-    public TwitterStream getUserNewsFeedStream(){
-        ConfigurationBuilder cb = new ConfigurationBuilder();
-        cb.setDebugEnabled(true);
-        cb.setOAuthConsumerKey(Const.CONSUMER_KEY);
-        cb.setOAuthConsumerSecret(Const.CONSUMER_SECRET);
-        cb.setOAuthAccessToken(mStringToken);
-        cb.setOAuthAccessTokenSecret(mStringTokenSecret);
-
-        return new TwitterStreamFactory(cb.build()).getInstance();
     }
 
     private void setScreenDimMemberVars(){
