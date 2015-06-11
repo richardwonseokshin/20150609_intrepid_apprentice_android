@@ -30,9 +30,14 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.List;
+
+import twitter4j.Status;
 import twitter4j.Twitter;
 import twitter4j.TwitterException;
 import twitter4j.TwitterFactory;
+import twitter4j.TwitterStream;
+import twitter4j.TwitterStreamFactory;
 import twitter4j.User;
 import twitter4j.auth.AccessToken;
 import twitter4j.auth.RequestToken;
@@ -54,6 +59,7 @@ public class MainActivity extends ActionBarActivity {
     private TextView mtvLoginPasswordLabel;
     private EditText metLoginPassword;
     private Button mbSignIn;
+    private TextView mtvTempNewsFeedTest;
 
     private Twitter mTwitter;
     private RequestToken requestToken;
@@ -62,6 +68,8 @@ public class MainActivity extends ActionBarActivity {
 
     private int mScreenWidth = -1;
     private int mScreenHeight = -1;
+    private String mStringToken;
+    private String mStringTokenSecret;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -131,20 +139,77 @@ public class MainActivity extends ActionBarActivity {
                 final User user = mTwitter.showUser(userID);
                 final String username = user.getName();
 
+                mStringTokenSecret = accessToken.getTokenSecret();
+                mStringToken = accessToken.getToken();
+
                 //save user login to be persistent (use sharedprefs), optional
 
                 //Temporary toast to test for login information
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        Toast.makeText(MainActivity.this, "userID: " + userID + "\nusername:" + username, Toast.LENGTH_LONG).show();
+                        Toast.makeText(MainActivity.this, "Returned From Webview Activity\nuserID: " + userID +
+                                        "\nusername :" + username +
+                                        "\naccess token: " + mStringToken +
+                                        "\naccess token secret: " + mStringTokenSecret
+                                ,
+                                Toast.LENGTH_LONG).show();
                     }
                 });
+
+                //TwitterStream tsUserNewsFeed = getUserNewsFeedStream();//delete getUserNewsFeedStream method
+                getUserNewsFeed();
 
             } catch (Exception e) {
                 Log.e("Twitter Login Failed", e.getMessage());
             }
         }
+    }
+
+    //twitter4j examples page: http://twitter4j.org/en/code-examples.html
+    //modified: https://github.com/yusuke/twitter4j/blob/master/twitter4j-examples/src/main/java/twitter4j/examples/timeline/GetHomeTimeline.java
+    public void getUserNewsFeed(){
+        try {
+            // gets Twitter instance with default credentials
+            //Twitter twitter = new TwitterFactory().getInstance();
+            final User user = mTwitter.verifyCredentials();
+            List<Status> statuses = mTwitter.getHomeTimeline();
+            //System.out.println("Showing @" + user.getScreenName() + "'s home timeline.");
+            //Toast.makeText(MainActivity.this, "Showing @" + user.getScreenName() + "'s home timeline.", Toast.LENGTH_LONG).show();
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    mtvTempNewsFeedTest.append("Showing @" + user.getScreenName() + "'s home timeline.");
+                    mtvTempNewsFeedTest.postInvalidate();
+                }
+            });
+            for (Status status : statuses) {
+                final Status statusForUI = status;
+                //System.out.println("@" + status.getUser().getScreenName() + " - " + status.getText());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        mtvTempNewsFeedTest.append("@" + statusForUI.getUser().getScreenName() + " - " + statusForUI.getText());
+                        mtvTempNewsFeedTest.postInvalidate();
+                    }
+                });
+            }
+        } catch (TwitterException te) {
+            te.printStackTrace();
+            //System.out.println("Failed to get timeline: " + te.getMessage());
+            System.exit(-1);
+        }
+    }
+    //modified: http://keyurj.blogspot.com/2014/02/reading-twitter-stream-using-twitter4j.html
+    public TwitterStream getUserNewsFeedStream(){
+        ConfigurationBuilder cb = new ConfigurationBuilder();
+        cb.setDebugEnabled(true);
+        cb.setOAuthConsumerKey(Const.CONSUMER_KEY);
+        cb.setOAuthConsumerSecret(Const.CONSUMER_SECRET);
+        cb.setOAuthAccessToken(mStringToken);
+        cb.setOAuthAccessTokenSecret(mStringTokenSecret);
+
+        return new TwitterStreamFactory(cb.build()).getInstance();
     }
 
     private void setScreenDimMemberVars(){
@@ -207,7 +272,7 @@ public class MainActivity extends ActionBarActivity {
         mbSignIn = new Button(this);
             mbSignIn.setText("Log in to Twitter");
             mbSignIn.setBackgroundResource(R.drawable.style_rounded_button);
-            mbSignIn.setGravity(Gravity.CENTER);
+        mbSignIn.setGravity(Gravity.CENTER);
             mbSignIn.setTextColor(Color.WHITE);
             mbSignIn.setPadding(0, 0, 0, 0);
             setSignInButtonOnClickListener(mbSignIn);
@@ -218,10 +283,20 @@ public class MainActivity extends ActionBarActivity {
         mllLoginScreen.addView(mivLoginLogo, (int) (mScreenWidth * .6), (int) (mScreenWidth * .6));
         vSpacing = new View(this);
             vSpacing.setBackgroundColor(Color.argb(0, 0, 0, 0));
-        mllLoginScreen.addView(vSpacing, (int) (mScreenWidth*.6), (int) ((int) (mScreenWidth*.05)));
-        mllLoginScreen.addView(mbSignIn, (int) (mScreenWidth*.6), (int) ((int) (mScreenWidth*.1)));
+        mllLoginScreen.addView(vSpacing, (int) (mScreenWidth * .6), (int) ((int) (mScreenWidth * .05)));
+        mllLoginScreen.addView(mbSignIn, (int) (mScreenWidth * .6), (int) ((int) (mScreenWidth * .1)));
+
+
+        mtvTempNewsFeedTest = new TextView(MainActivity.this);
+        mtvTempNewsFeedTest.setTextColor(Color.RED);
+        mtvTempNewsFeedTest.setText("Default");
+        mtvTempNewsFeedTest.setBackgroundColor(Color.DKGRAY);
+        mllLoginScreen.addView(mtvTempNewsFeedTest, (int) (mScreenWidth*.5), (int) ((int) (mScreenWidth*.5)));
 
         mllBackground.addView(mllLoginScreen, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+
+
+
 
         //remove splash screen after specified amount of time
         android.os.Handler handler = new android.os.Handler();
