@@ -381,6 +381,18 @@ public class MainActivity extends ActionBarActivity {
             @Override
             public void onClick(View v) {
                 //TODO: post tweet
+                String stringTweet = metPostTweet.getText().toString();
+                if(stringTweet.length() > 140){
+                    stringTweet = stringTweet.substring(0, 140);
+                }
+                try {
+                    Status status = mTwitter.updateStatus(stringTweet);
+                } catch (TwitterException e) {
+                    e.printStackTrace();
+                }
+
+                getUserNewsFeed();
+                //System.out.println("Successfully updated the status to [" + status.getText() + "].");
             }
         });
     }
