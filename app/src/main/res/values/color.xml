@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <item name="twitter_blue_dark" type="color">#ff4451ff</item>
     <item name="twitter_blue" type="color">#FF4099FF</item>
+    <item name="twitter_blue_light" type="color">#ff6cd4ff</item>
 
     <item name="blue" type="color">#FF33B5E5</item>
     <item name="purple" type="color">#FFAA66CC</item>

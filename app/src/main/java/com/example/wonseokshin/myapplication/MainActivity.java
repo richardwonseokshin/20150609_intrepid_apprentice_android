@@ -4,8 +4,17 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ImageFormat;
+import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.Point;
+import android.graphics.Rect;
+import android.graphics.YuvImage;
+import android.hardware.Camera;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.StrictMode;
@@ -15,6 +24,9 @@ import android.view.Display;
 import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.Surface;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -29,6 +41,12 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.squareup.picasso.Picasso;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.IntBuffer;
 import java.util.List;
 
 import twitter4j.Status;
@@ -41,7 +59,7 @@ import twitter4j.auth.RequestToken;
 import twitter4j.conf.Configuration;
 import twitter4j.conf.ConfigurationBuilder;
 
-public class MainActivity extends ActionBarActivity {
+public class MainActivity extends ActionBarActivity{// implements SurfaceHolder.Callback{
 
     private static final String TAG = "INTREPID_TWITTER_CLIENT";
     private static final int WEBVIEW_INTENT_REQUEST_CODE = 101;//can be any number, used for starting webview intent
@@ -73,6 +91,11 @@ public class MainActivity extends ActionBarActivity {
     private LinearLayout mllPostTweet;
     private EditText metPostTweet;
     private Button mbPostTweet;
+    private LinearLayout mllCamera;
+    private ImageView mivCameraBitmap;
+    private SurfaceView preview;
+
+    Bitmap mBitmapCamera;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,6 +103,9 @@ public class MainActivity extends ActionBarActivity {
 
         //set orientation to portrait, hide actionbar, hide status bar
         initAppDisplayConfig();
+
+        //init device netstats
+        initDeviceNetStats();
 
         //detect device api build version, get screen width and height
         setScreenDimMemberVars();
@@ -169,14 +195,14 @@ public class MainActivity extends ActionBarActivity {
                 msvNewsFeed.setVisibility(View.VISIBLE);
                 mivLoginLogo.setVisibility(View.GONE);
                 mllPostTweet.setVisibility(View.VISIBLE);
-
+                mllCamera.setVisibility(View.VISIBLE);
             } catch (Exception e) {
                 Log.e("Twitter Login Failed", e.getMessage());
             }
         }
     }
 
-    public void saveAccessTokenToSharedPrefs(AccessToken accessToken) {
+    private void saveAccessTokenToSharedPrefs(AccessToken accessToken) {
         SharedPreferences.Editor e = mSharedPreferences.edit();
         e.putString(Const.PREF_KEY_TOKEN, accessToken.getToken());
         e.putString(Const.PREF_KEY_SECRET, accessToken.getTokenSecret());
@@ -187,7 +213,7 @@ public class MainActivity extends ActionBarActivity {
 
     //twitter4j examples page: http://twitter4j.org/en/code-examples.html
     //modified: https://github.com/yusuke/twitter4j/blob/master/twitter4j-examples/src/main/java/twitter4j/examples/timeline/GetHomeTimeline.java
-    public void getUserNewsFeed() {
+    private void getUserNewsFeed() {
         try {
             if (mTwitter == null) {
                 ConfigurationBuilder cb = new ConfigurationBuilder();
@@ -204,6 +230,8 @@ public class MainActivity extends ActionBarActivity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
+                    mllNewsFeed.removeAllViews();
+                    mllNewsFeed.addView(mtvNewsFeed, (int) (mScreenWidth * .9), ViewGroup.LayoutParams.WRAP_CONTENT);
                     mtvNewsFeed.setText("Twitter Feed\n");
                 }
             });
@@ -213,7 +241,7 @@ public class MainActivity extends ActionBarActivity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    mtvNewsFeed.append("Showing @" + user.getScreenName() + "'s home timeline.\n");
+                    mtvNewsFeed.append("Showing @" + user.getScreenName() + "'s home timeline.");
                     mtvNewsFeed.postInvalidate();
                 }
             });
@@ -223,15 +251,44 @@ public class MainActivity extends ActionBarActivity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        mtvNewsFeed.append("\n\n@" + statusForUI.getUser().getScreenName() + "\n- " + statusForUI.getText());
-                        mtvNewsFeed.postInvalidate();
+                        //mtvNewsFeed.append("\n\n@" + statusForUI.getUser().getScreenName() + "\n- " + statusForUI.getText());
+                        //mtvNewsFeed.postInvalidate();
+
+
+
+                        ImageView imageView = new ImageView(MainActivity.this);
+                        Picasso.with(MainActivity.this)
+                                .load(status.getUser().getBiggerProfileImageURL())
+                                .into(imageView);
+                        LinearLayout llTweet = new LinearLayout(MainActivity.this);
+                            llTweet.setOrientation(LinearLayout.HORIZONTAL);
+                            llTweet.setGravity(Gravity.CENTER);
+                            llTweet.setPadding(5, 5, 5, 5);
+                            llTweet.setBackgroundColor(getResources().getColor(R.color.twitter_blue_light));
+                        LinearLayout llImageAndName = new LinearLayout(MainActivity.this);
+                            llImageAndName.setOrientation(LinearLayout.VERTICAL);
+                            llImageAndName.setGravity(Gravity.CENTER);
+                        TextView tvName = new TextView(MainActivity.this);
+                            tvName.setGravity(Gravity.CENTER);
+                            tvName.setText(statusForUI.getUser().getScreenName());
+                        llImageAndName.addView(imageView, (int) (mScreenWidth * .3), (int) (mScreenWidth * .3));
+                        llImageAndName.addView(tvName);
+                        TextView tvTweet = new TextView(MainActivity.this);
+                            tvTweet.setGravity(Gravity.CENTER_VERTICAL);
+                            tvTweet.setText(statusForUI.getText());
+                            tvTweet.setPadding(5,5,5,5);
+                        llTweet.addView(llImageAndName);
+                        llTweet.addView(tvTweet,  (int) (mScreenWidth * .6) - 10, ViewGroup.LayoutParams.WRAP_CONTENT);
+
+                        View vSpacing = new View(MainActivity.this);
+                            vSpacing.setBackgroundColor(Color.argb(0,0,0,0));
+                        mllNewsFeed.addView(vSpacing, 10,10);
+                        mllNewsFeed.addView(llTweet);
                     }
                 });
             }
         } catch (TwitterException te) {
             te.printStackTrace();
-            //System.out.println("Failed to get timeline: " + te.getMessage());
-            System.exit(-1);
         }
     }
 
@@ -280,9 +337,26 @@ public class MainActivity extends ActionBarActivity {
         mivLoginLogo = new ImageView(this);
         mivLoginLogo.setBackgroundResource(R.drawable.loginlogo);
 
-        String userScreenName = mSharedPreferences.getString(Const.SCREENNAME, null);
-        //String userID = mSharedPreferences.getString(Const.USER_ID, null);
+        //The surfaceview and imageview for the camera
+        mllCamera = new LinearLayout(MainActivity.this);
+            mllCamera.setBackgroundColor(Color.YELLOW);
+            mllCamera.setGravity(Gravity.CENTER);
+        preview = new SurfaceViewCamera(MainActivity.this, MainActivity.this);
+        mllCamera.addView(preview, (int) ((mScreenHeight - mScreenWidth * 1.16) * .75), (int) ((mScreenHeight - mScreenWidth * 1.16) * .75));
+        mivCameraBitmap = new ImageView(MainActivity.this){
+            Paint paint = new Paint();
+            @Override
+            protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                if(mBitmapCamera != null) {
+                    Bitmap scaledBitmap = Bitmap.createScaledBitmap(mBitmapCamera, canvas.getWidth(), canvas.getHeight(), true);
+                    canvas.drawBitmap(scaledBitmap, 0, 0, paint);
+                }
+            }
+        };
+        mllCamera.addView(mivCameraBitmap, (int) ((mScreenHeight - mScreenWidth * 1.16) * .75), (int) ((mScreenHeight - mScreenWidth * 1.16) * .75));
 
+        String userScreenName = mSharedPreferences.getString(Const.SCREENNAME, null);
         mbSignIn = new Button(this);
         mbSignIn.setText("Sign in to Twitter");
         mbSignIn.setBackgroundResource(R.drawable.style_rounded_button);
@@ -300,9 +374,11 @@ public class MainActivity extends ActionBarActivity {
         mtvNewsFeed = new TextView(MainActivity.this);
         mtvNewsFeed.setTextColor(getResources().getColor(R.color.twitter_blue));
         mtvNewsFeed.setText("Twitter Feed\n");
-        mtvNewsFeed.setBackgroundColor(Color.DKGRAY);
+        mtvNewsFeed.setBackgroundColor(getResources().getColor(R.color.twitter_blue_dark));
         mtvNewsFeed.setPadding(5, 5, 5, 5);
+        mtvNewsFeed.setGravity(Gravity.CENTER);
         mllNewsFeed = new LinearLayout(MainActivity.this);
+        mllNewsFeed.setOrientation(LinearLayout.VERTICAL);
         mllNewsFeed.addView(mtvNewsFeed);
         msvNewsFeed = new ScrollView(MainActivity.this);
         msvNewsFeed.addView(mllNewsFeed);
@@ -324,13 +400,7 @@ public class MainActivity extends ActionBarActivity {
         vSpacing.setBackgroundColor(Color.argb(0, 0, 0, 0));
         mllPostTweet.addView(vSpacing, (int) (mScreenWidth * .02), (int) (mScreenWidth * .02));
         mllPostTweet.addView(mbPostTweet, (int) (mScreenWidth * .2), ViewGroup.LayoutParams.WRAP_CONTENT);
-
-
-        vSpacing = new View(this);
-        vSpacing.setBackgroundColor(Color.argb(0, 0, 0, 0));
-        mllLoginScreen.addView(vSpacing, (int) (mScreenWidth * .6), (int) (mScreenWidth * .02));
-        mllLoginScreen.addView(mbSignIn, (int) (mScreenWidth * .6), (int) (mScreenWidth * .1));
-        mllLoginScreen.addView(mbSignOut, (int) (mScreenWidth * .6), (int) (mScreenWidth * .1));
+        mllLoginScreen.addView(mllCamera, (int) (mScreenWidth * 1), (int) ((mScreenHeight - mScreenWidth * 1.16) * .75));
         vSpacing = new View(this);
         vSpacing.setBackgroundColor(Color.argb(0, 0, 0, 0));
         mllLoginScreen.addView(vSpacing, (int) (mScreenWidth * .6), (int) (mScreenWidth * .02));
@@ -340,6 +410,11 @@ public class MainActivity extends ActionBarActivity {
         mllLoginScreen.addView(vSpacing, (int) (mScreenWidth * .6), (int) (mScreenWidth * .02));
         mllLoginScreen.addView(mivLoginLogo, (int) (mScreenWidth * .6), (int) (mScreenWidth * .6));
         mllLoginScreen.addView(msvNewsFeed, (int) (mScreenWidth * .9), (int) (mScreenWidth * .9));
+        vSpacing = new View(this);
+        vSpacing.setBackgroundColor(Color.argb(0, 0, 0, 0));
+        mllLoginScreen.addView(vSpacing, (int) (mScreenWidth * .6), (int) (mScreenWidth * .02));
+        mllLoginScreen.addView(mbSignIn, (int) (mScreenWidth * .6), (int) (mScreenWidth * .1));
+        mllLoginScreen.addView(mbSignOut, (int) (mScreenWidth * .6), (int) (mScreenWidth * .1));
 
         mllBackground.addView(mllLoginScreen, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
 
@@ -353,6 +428,8 @@ public class MainActivity extends ActionBarActivity {
             mivLoginLogo.setVisibility(View.GONE);
 
             mllPostTweet.setVisibility(View.VISIBLE);
+
+            mllCamera.setVisibility(View.VISIBLE);
             getUserNewsFeed();
         } else {
             mbSignIn.setVisibility(View.VISIBLE);
@@ -362,25 +439,29 @@ public class MainActivity extends ActionBarActivity {
             mivLoginLogo.setVisibility(View.VISIBLE);
 
             mllPostTweet.setVisibility(View.GONE);
+
+            mllCamera.setVisibility(View.GONE);
         }
 
-        //remove splash screen after specified amount of time
-        android.os.Handler handler = new android.os.Handler();
-        handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                mllBackground.removeView(mllSplashScreen);
-            }
-        }, 2500);
+        if(mNetworkUtility.isNetworkAvailable()) {
+            //remove splash screen after specified amount of time
+            android.os.Handler handler = new android.os.Handler();
+            handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    mllBackground.removeView(mllSplashScreen);
+                }
+            }, 2500);
+        }
 
         return mllBackground;
     }
+
 
     private void setOnClickListenerPostButton(final Button postButton){
         postButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                //TODO: post tweet
                 String stringTweet = metPostTweet.getText().toString();
                 if(stringTweet.length() > 140){
                     stringTweet = stringTweet.substring(0, 140);
@@ -528,13 +609,31 @@ public class MainActivity extends ActionBarActivity {
         decorView.setSystemUiVisibility(uiOptions);
     }
 
-    public void clearAppSharedPreferences(String prefName) {
+    private void clearAppSharedPreferences(String prefName) {
         mSharedPreferences = getSharedPreferences(prefName, MODE_PRIVATE);
         mSharedPreferences.edit().clear();
         mSharedPreferences.edit().commit();
     }
 
-    public void setSharedPrefsToMemberVar(String prefsName) {
+    private void setSharedPrefsToMemberVar(String prefsName) {
         mSharedPreferences = getSharedPreferences(prefsName, MODE_PRIVATE);
+    }
+
+    public void updateImageViewCameraBitmap(Bitmap bitmap){
+        mBitmapCamera = bitmap;
+        mivCameraBitmap.postInvalidate();
+    }
+
+    NetworkUtility mNetworkUtility;
+    String deviceIPAddr = "";
+    int appOutPortNum = 0;
+    int appInPortNum = 0;
+    //get ip address of device, generate port number to send to
+    private void initDeviceNetStats(){
+        mNetworkUtility = new NetworkUtility(MainActivity.this);
+
+        this.deviceIPAddr = mNetworkUtility.getIPAddress(true); // use ipv4
+        this.appOutPortNum = (int) (40000 + (15000 * Math.random()));
+        this.appInPortNum = (int) (39999 - (15000 * Math.random()));
     }
 }
